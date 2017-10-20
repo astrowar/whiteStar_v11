@@ -252,6 +252,9 @@ struct ModalParameterBuffer
 		//if (mp.p[0].s > 0.10) return;
 
 		//if (mp.p[1].s < 0.20) return;
+
+		 
+
 		if (modal_order >= 1) if (fabs(mp.p[1].x - mp.p[0].x) <0.001) return;
 		if (modal_order >= 2) if (fabs(mp.p[2].x - mp.p[0].x) <0.001) return;
 		if (modal_order >= 2) if (fabs(mp.p[2].x - mp.p[1].x) <0.001) return;
@@ -260,6 +263,8 @@ struct ModalParameterBuffer
 		if (modal_order >= 3) if (fabs(mp.p[3].x - mp.p[1].x) <0.001) return;
 		if (modal_order >= 3) if (fabs(mp.p[3].x - mp.p[2].x) <0.001) return;
 
+
+		
 
 		if (modal_order >= 1) if ( mp.p[1].a > mp.p[0].a) return;
 
@@ -270,6 +275,16 @@ struct ModalParameterBuffer
 		if (modal_order >= 3) if (mp.p[3].a > mp.p[1].a) return;
 		if (modal_order >= 3) if (mp.p[3].a > mp.p[2].a) return;
 		
+		//normalize
+		real aTotal = 0.0;
+		for (int i = 0; i <= modal_order; ++i) aTotal += mp.p[i].a;
+
+		
+		if (aTotal < FLT_EPSILON) return;
+
+		 
+		for (int i = 0; i <= modal_order; ++i) mp.p[i].a = mp.p[i].a / aTotal;		
+	 
 
 		v_parameters_to_process.push_back(mp);
 		//dump(mp); 
@@ -322,12 +337,14 @@ struct Parameters
 
  
 
-void fill_range(ModalParameterBuffer  &v_modalpoints, ModalParameter  mp, int modalOrder, int orderMax, real aTotal, real aMax, real da, const Parameters& p, const char* detail_filename)
+void fill_range(ModalParameterBuffer  &v_modalpoints, ModalParameter  mp, int modalOrder, int orderMax, real amax,  real da, const Parameters& p, const char* detail_filename)
 { 
+	for (real a = amax; a >= 0 ; a -= p.da)
+	{
+		if (a < 0) return;
+		if ((modalOrder > 0) && (mp.p[modalOrder - 1].a < a)) return; //nao prossege pois ha o valor anterior eh maior que o atual
 
-	if (modalOrder == orderMax)
-	{	real a = 1.0 - aTotal ; // o que restou
-		if ( a > FLT_EPSILON)
+		if (modalOrder == orderMax)
 		{
 			for (real s = p.s_min; s <= p.s_max; s += p.ds)
 				for (real m = p.m_min; m <= p.m_max; m += p.dm)
@@ -335,24 +352,24 @@ void fill_range(ModalParameterBuffer  &v_modalpoints, ModalParameter  mp, int mo
 					mp.p[modalOrder].a = a;
 					mp.p[modalOrder].x = m;
 					mp.p[modalOrder].s = s*s;
-					v_modalpoints.add(mp, orderMax,detail_filename);
+					v_modalpoints.add(mp, orderMax, detail_filename);
 				}
 		}
-	}
-	else
-	{
-		for (real a = (1.0- aTotal); a >= da ; a -= da)
+		else
 		{
-			
-			if (aTotal + a < 1.0 &&  a > FLT_EPSILON)
-				for (real s = p.s_min; s <= p.s_max; s += p.ds)
-					for (real m = p.m_min; m <= p.m_max; m += p.dm)
-					{
-						mp.p[modalOrder].a = a;
-						mp.p[modalOrder].x = m;
-						mp.p[modalOrder].s = s*s;
-						fill_range(v_modalpoints, mp, modalOrder + 1, orderMax, aTotal + a,   a  , da, p ,detail_filename );
-					}
+
+
+			for (real s = p.s_min; s <= p.s_max; s += p.ds)
+				for (real m = p.m_min; m <= p.m_max; m += p.dm)
+				{
+					mp.p[modalOrder].a = a;
+					mp.p[modalOrder].x = m;
+					mp.p[modalOrder].s = s*s;
+
+					real amax_next = a;
+					fill_range(v_modalpoints, mp, modalOrder + 1, orderMax, amax_next,da, p, detail_filename);
+				}
+
 		}
 	}
 
@@ -365,37 +382,24 @@ double amp_total(const ModalParameter&  mp , int orderMax  )
 	return acc;
 }
  
-void fill_range_var(ModalParameterBuffer  &v_modalpoints, ModalParameter  mp, int modalOrder, int orderMax, real aTotal, real aMax,   const ModalParameterRegion& prange, const char* detail_filename)
+void fill_range_var(ModalParameterBuffer  &v_modalpoints, ModalParameter  mp, int modalOrder, int orderMax, real aMax,   const ModalParameterRegion& prange, const char* detail_filename)
 {
 	prange.p[modalOrder].expand( [&](float a,float m,float s)
 	    {
 		   if (modalOrder == orderMax)
 		   {
-			   mp.p[modalOrder].a = a;
+			   mp.p[modalOrder].a = std::max( a, 0.0f );
 			   mp.p[modalOrder].x = m;
-			   mp.p[modalOrder].s = s;
-
-			   double amp = amp_total(mp,orderMax);
-			   double aa = 1.0 - amp;
-			   if (aa >-FLT_EPSILON)
-			   {
-				   if ((aa >= prange.p[0].a.x1) && (aa <= prange.p[0].a.x2))
-				   {
-					   mp.p[0].a = aa;
-					  // dump(mp);
-					   v_modalpoints.add(mp, orderMax,detail_filename);
-				   }
-			   }
+			   mp.p[modalOrder].s = s; 
+			   v_modalpoints.add(mp, orderMax, detail_filename); 
 		   }
-		   else if (aTotal + a < 1.0 &&  a > -FLT_EPSILON)
-		   {   double aa = std::max(0.0f, a);
-		   
-		   if (modalOrder == 0) { aa = 0.0; }
-
-		       mp.p[modalOrder].a = aa;
+		   else 
+		   {   
+			   real aNext = std::max(a, 0.0f);
+		       mp.p[modalOrder].a = aNext;
 			   mp.p[modalOrder].x = m;
 			   mp.p[modalOrder].s = s;
-			   fill_range_var(v_modalpoints, mp, modalOrder + 1, orderMax, aTotal + aa,aa ,   prange,detail_filename);
+			   fill_range_var(v_modalpoints, mp, modalOrder + 1, orderMax, aNext,    prange,detail_filename);
 		   }
 
 	    }
@@ -415,7 +419,7 @@ std::vector<ModalParameter>  process_data(   int orderMax,  const Parameters& p 
 	ModalParameter mp_zero;
 	ModalParameterBuffer  v_modalpoints;
 	
-	fill_range(v_modalpoints, mp_zero, 0, std::min(orderMax,3), 0.0, 1.0, p.da, p, detail_filename );
+	fill_range(v_modalpoints, mp_zero, 0, std::min(orderMax,3),  1.0,  p.da, p, detail_filename );
 	int64_t psize = 0;
 	psize += v_modalpoints.v_parameters_to_process.size();
 	printf("has %llu data \n", psize);
@@ -430,7 +434,7 @@ std::vector<ModalParameter>  process_data(   int orderMax,  const Parameters& p 
 	ModalParameter mp_zero;
 	ModalParameterBuffer  v_modalpoints;
 
-	fill_range_var(v_modalpoints, mp_zero, 0, std::min(orderMax, 3), 0.0, 1.0,  p, detail_filename);
+	fill_range_var(v_modalpoints, mp_zero, 0, std::min(orderMax, 3), 1.0,   p, detail_filename);
 	int64_t psize = 0;
 	psize += v_modalpoints.v_parameters_to_process.size();
 	printf("has %llu data \n", psize);
@@ -503,8 +507,12 @@ std::vector<ModalParameter>  process_data(   int orderMax,  const Parameters& p 
  ModalParameterRegion expand_around(ModalParameter center, int order, float da, float dx, float ds)
  {
 	 int n = 4;
-	 if (order >= 0)
+	 if (order < 0)
 	 {
+		 throw "unable to do";
+	 }
+	 
+	 
 		 ModalParameterRange m0 = ModalParameterRange(
 			 expand(center.p[0].a, da, n, 0.001f, 1.0f ),
 			 expand(center.p[0].x , dx,n, 0.001f, 2.0f),
@@ -534,7 +542,7 @@ std::vector<ModalParameter>  process_data(   int orderMax,  const Parameters& p 
 			 return ModalParameterRegion(m0, m1);
 		 }
 		 return ModalParameterRegion(m0);
-	 }
+ 
  }
 
 int main()
@@ -550,9 +558,9 @@ int main()
 //      auto m3 = ModalParameterRange({ 0.02,0.08,5 }, { 0.1,1.7,12 }, { 0.01,0.8,8});
 
 		auto m1 = ModalParameterRange({ 0.80,0.90, 5 }, { 0.13,0.18,4 }, { 0.005,0.03,4 });
-		auto m2 = ModalParameterRange({ 0.0,0.1,4 },  { 0.45,0.65,4 },    { 0.01,0.8,4 });
+		auto m2 = ModalParameterRange({ 0.0,0.1,4 },  { 0.45,0.65,4 },   { 0.01,0.8,4 });
 		auto m3 = ModalParameterRange({ 0.0,0.1,5 }, { 0.0, 1.7, 5 },    { 0.01,0.5, 5});
-		auto m4 = ModalParameterRange({ 0.0,0.05,5 }, { 0.0, 2.1, 5 },    { 0.001,0.5, 5 });
+		auto m4 = ModalParameterRange({ 0.0,0.05,6 }, { 0.1, 1.9, 6 },   { 0.05,0.2, 6 });
 		
 
 		ModalParameterRegion region( m1,m2,m3 ,m4 );
