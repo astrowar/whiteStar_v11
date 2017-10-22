@@ -63,16 +63,41 @@ typedef struct ModalParameterRange
 				}
 	}
 
+	void expand_xs(const std::function<void(  float, float)>& f) const
+	{
+		 
+			for (float _x = x.x1; _x <= x.x2; _x += x.dx)
+				for (float _s = s.x1; _s <= s.x2; _s += s.dx)
+				{
+					f( _x, _s);
+				}
+	}
+
 	 ModalParameterRange  refine_around(ModalParameterIc p) const
 	 {
-		 double a_1 = 0.5*(a.x1 + p.a);
-		 double a_2 = 0.5*(a.x2 + p.a);
+		 double ref_fac = 0.3;
+		 double a_dd = 0.5*fabs(a.x2 - a.x1);
+		 double a_1 = p.a - ref_fac*a_dd ;
+		 double a_2 = p.a + ref_fac*a_dd ; 
 
-		 double x_1 = 0.5*(x.x1 + p.x);
-		 double x_2 = 0.5*(x.x2 + p.x);
+		 
 
-		 double s_1 = 0.5*(s.x1 + p.s);
-		 double s_2 = 0.5*(s.x2 + p.s);
+		 double x_dd = 0.5*fabs(x.x2 - x.x1);
+		 double x_1 = p.x - ref_fac*x_dd;
+		 double x_2 = p.x + ref_fac*x_dd;
+
+		 //double x_1 = ref_fac*(x.x1 + p.x);
+		 //double x_2 = ref_fac*(x.x2 + p.x);
+
+		 double s_dd = 0.5*fabs(s.x2 - s.x1);
+		 //double s_1 = ref_fac*(s.x1 + p.s);
+		 //double s_2 = ref_fac*(s.x2 + p.s);
+		 double s_1 = p.s - ref_fac*s_dd;
+		 double s_2 = p.s + ref_fac*s_dd;
+
+		 a_1= std::max(a_1, 0.0);
+		 s_1= std::max(s_1, 0.0);
+		 x_1= std::max(x_1, 0.0);
 
 		 int na = (a.x2 - a.x1) / a.dx;
 		 int nx = (x.x2 - x.x1) / x.dx;
@@ -230,7 +255,7 @@ struct ModalParameterBuffer
 			v_parameters_to_process.clear();
 
 			 
-			if(v_parameters_filled.size()> 1024 * 200 || force_out)
+			if(v_parameters_filled.size()> 1024 * 800 || force_out)
 			{
 				 
 				save_progress_log( );
@@ -275,16 +300,24 @@ struct ModalParameterBuffer
 		if (modal_order >= 3) if (mp.p[3].a > mp.p[1].a) return;
 		if (modal_order >= 3) if (mp.p[3].a > mp.p[2].a) return;
 		
-		//normalize
-		real aTotal = 0.0;
-		for (int i = 0; i <= modal_order; ++i) aTotal += mp.p[i].a;
+		if (modal_order > 0)
+		{
+			// renormaliza o ultimo termo
 
-		
-		if (aTotal < FLT_EPSILON) return;
+			real aTotal_1 = 0.0;
+			for (int i = 0; i <= modal_order - 1; ++i) aTotal_1 += mp.p[i].a; 
+			double Reaminder = 1.0 - aTotal_1;
+			if (Reaminder <= FLT_EPSILON) return;
+			mp.p[modal_order].a = Reaminder;
 
+			if (mp.p[modal_order].a > mp.p[modal_order - 1].a) return;
+		}
+
+		for (int i = 0; i <= modal_order; ++i)
+		{
+			if (mp.p[i].a < 0.00001) return;
+		}
 		 
-		for (int i = 0; i <= modal_order; ++i) mp.p[i].a = mp.p[i].a / aTotal;		
-	 
 
 		v_parameters_to_process.push_back(mp);
 		//dump(mp); 
@@ -341,7 +374,7 @@ void fill_range(ModalParameterBuffer  &v_modalpoints, ModalParameter  mp, int mo
 { 
 	for (real a = amax; a >= 0 ; a -= p.da)
 	{
-		if (a < 0) return;
+		if (a <= FLT_MIN) return;
 		if ((modalOrder > 0) && (mp.p[modalOrder - 1].a < a)) return; //nao prossege pois ha o valor anterior eh maior que o atual
 
 		if (modalOrder == orderMax)
@@ -382,29 +415,44 @@ double amp_total(const ModalParameter&  mp , int orderMax  )
 	return acc;
 }
  
-void fill_range_var(ModalParameterBuffer  &v_modalpoints, ModalParameter  mp, int modalOrder, int orderMax, real aMax,   const ModalParameterRegion& prange, const char* detail_filename)
+void fill_range_var(ModalParameterBuffer  &v_modalpoints, ModalParameter  mp, int modalOrder, int orderMax, real aMax, real aRemainder,  const ModalParameterRegion& prange, const char* detail_filename)
 {
-	prange.p[modalOrder].expand( [&](float a,float m,float s)
-	    {
-		   if (modalOrder == orderMax)
-		   {
-			   mp.p[modalOrder].a = std::max( a, 0.0f );
-			   mp.p[modalOrder].x = m;
-			   mp.p[modalOrder].s = s; 
-			   v_modalpoints.add(mp, orderMax, detail_filename); 
-		   }
-		   else 
-		   {   
-			   real aNext = std::max(a, 0.0f);
-		       mp.p[modalOrder].a = aNext;
-			   mp.p[modalOrder].x = m;
-			   mp.p[modalOrder].s = s;
-			   fill_range_var(v_modalpoints, mp, modalOrder + 1, orderMax, aNext,    prange,detail_filename);
-		   }
 
-	    }
-	);
+	if (modalOrder == orderMax)
+	{
+		if (aRemainder <= aMax)
+		{
+			prange.p[modalOrder].expand_xs([&](float m, float s)
+			{
+				{
+					mp.p[modalOrder].a = aRemainder; //sera renormalizado mesmo
+					mp.p[modalOrder].x = m;
+					mp.p[modalOrder].s = s;
+					v_modalpoints.add(mp, orderMax, detail_filename);
+				}
 
+			});
+		}
+	}
+	else
+	{
+
+		prange.p[modalOrder].expand([&](float a, float m, float s)
+		{
+			if (a <= aMax && a >= 0.00001)
+			{ 
+				{
+					real aNext = std::max(a, 0.0f);
+					mp.p[modalOrder].a = aNext;
+					mp.p[modalOrder].x = m;
+					mp.p[modalOrder].s = s;
+					fill_range_var(v_modalpoints, mp, modalOrder + 1, orderMax, aNext, aRemainder - aNext,  prange, detail_filename);
+				}
+			}
+
+		}
+		);
+	}
 
 }
 
@@ -434,7 +482,7 @@ std::vector<ModalParameter>  process_data(   int orderMax,  const Parameters& p 
 	ModalParameter mp_zero;
 	ModalParameterBuffer  v_modalpoints;
 
-	fill_range_var(v_modalpoints, mp_zero, 0, std::min(orderMax, 3), 1.0,   p, detail_filename);
+	fill_range_var(v_modalpoints, mp_zero, 0, std::min(orderMax, 3), 1.0, 1.0,  p, detail_filename);
 	int64_t psize = 0;
 	psize += v_modalpoints.v_parameters_to_process.size();
 	printf("has %llu data \n", psize);
@@ -558,9 +606,9 @@ int main()
 //      auto m3 = ModalParameterRange({ 0.02,0.08,5 }, { 0.1,1.7,12 }, { 0.01,0.8,8});
 
 		auto m1 = ModalParameterRange({ 0.80,0.90, 5 }, { 0.13,0.18,4 }, { 0.005,0.03,4 });
-		auto m2 = ModalParameterRange({ 0.0,0.1,4 },  { 0.45,0.65,4 },   { 0.01,0.8,4 });
-		auto m3 = ModalParameterRange({ 0.0,0.1,5 }, { 0.0, 1.7, 5 },    { 0.01,0.5, 5});
-		auto m4 = ModalParameterRange({ 0.0,0.05,6 }, { 0.1, 1.9, 6 },   { 0.05,0.2, 6 });
+		auto m2 = ModalParameterRange({ 0.0013,0.12,5 },  { 0.42,0.68,4 },   { 0.01,0.8,4 });
+		auto m3 = ModalParameterRange({ 0.0013,0.023,5 }, { 0.0, 1.7, 5 },    { 0.005,0.5,5});
+		auto m4 = ModalParameterRange({ 0.0,0.05,5 }, { 0.0, 1.9, 5 },   { 0.005,0.2, 5 });
 		
 
 		ModalParameterRegion region( m1,m2,m3 ,m4 );

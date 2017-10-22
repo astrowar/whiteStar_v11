@@ -158,71 +158,10 @@ real ModalLikehod_i(ModalParameterIc mip,   real m1,   real m2 )
 
 real_in ModalLikehod_i_np(real_in x1, real_in q1, real_in x2, real_in q2)
 {
+   return gaussian(x2, x1, q1);
+  // return 0.52*gaussian(x2, x1, q1) + 0.24*gaussian(x2-0.01, x1, q1)  + 0.24*gaussian(x2+0.01, x1, q1)  ;
 
-
-
-	return gaussian(x2, x1, q1);
 	 
-	//real_in p1 = x2 - H * q2;
-	//real_in p5 = x2 + H * q2;
- 
-	real_in dx = 0.05;
-
-	if (fabs(x2 - x1) > 3*q1) return 0.0;
-	if (fabs(x2 - x1) > q1) return 0.16;
-	return 0.68;
-	
-	
-	return  0.5*(1.0 - fabs(erf(0.707107 *  (x2 - x1) / q1))) ;
-
-
-
-
-	real_in p1 = x2 - dx;
-	real_in p5 = x2 + dx;	
-	return  0.5*(erf(0.707107 * (p5 - x1) / q1) - erf(0.707107 * (p1 - x1) / q1))   ;
-
-
-	//if (q2 < q1*0.1) return 0.5*fabs(erf(0.707107 * (p5 - x1) / q1) - erf(0.707107 * (p1 - x1) / q1));
-
-	//if (p1 < x1 - H* q1) return 0.0;
-	//if (p5 > x1 + H* q1) return 0.0;
-
-
-	real_in p2 = x2 - q2;
-	//real_in p3 = x2 ;
-	real_in p4 = x2 + q2;
-
-
-	real_in w1 = erf(0.707107 * (p1 - x1) / q1);
-	real_in w2 = erf(0.707107 * (p2 - x1) / q1);
-	//real_in w3 = 0.5*erf(0.707107 * (p3 - x1) / q1);
-	real_in w4 = erf(0.707107 * (p4 - x1) / q1);
-	real_in w5 = erf(0.707107 * (p5 - x1) / q1);
-
-	//return 0.16*(w2 - w1) + 0.34*(w3 - w2) + 0.34*(w4 - w3) + 0.16*(w5 - w4);
-	return 0.5* (0.16*(w2 - w1) + 0.68*(w4 - w2) + 0.16*(w5 - w4));
-
-
-
-	//return gaussian_integrate_range(x1, q1, x2 - q2, x2 + q2);
-
-	//return gaussian(x2, x1, q1);
-
-	//if (q2 < 0.1*q1)
-	//{
-	//	return gaussian(x2, x1, q1);
-	//}
-	//
-	//real_in a1 = max(x1 - 5 * q1, x2 - 5 * q2);
-	//real_in a2 = min(x1 + 5 * q1, x2 + 5 * q2);
-	//if (a2 <= a1) return 0.0;
-
-	////gaussian_integrate_range(x1, q1, x2 - 2*q2, x2-q2)
-	////gaussian_integrate_range(x1, q1, x2 - q2, x2 )
-	////gaussian_integrate_range(x1, q1, x2     , x2 + q2)
-	////gaussian_integrate_range(x1, q1, x2 + q2, x2 + 2*q2)
-	//return 0;
 
 }
 

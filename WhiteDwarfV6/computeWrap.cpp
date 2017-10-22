@@ -8,8 +8,8 @@
 #include <complex>
 
 #define real double
-int maxWorkGroupSize = 256;
-size_t maxThreadsSize = 256;
+int maxWorkGroupSize = 512;
+size_t maxThreadsSize = 512;
 cl::CommandQueue queue;
 
 
@@ -241,16 +241,22 @@ void makeHistogram(  const int numMass, std::vector<double>& mass_h, std::vector
 
 
 
-void compute_using_samples(cl::Context context , cl::Program gpuProgram , std::vector<ModalParameter>& points,  int modalOrder, int numPoints,  std::vector<real> &output)
+void compute_using_samples(cl::Context context, cl::Program gpuProgram, std::vector<ModalParameter>& points, int modalOrder, int numPoints, std::vector<real> &output)
 {
 
 	static std::vector<double> mass_h;
 	static std::vector<double> count_h;
+	static bool has_mem_data = false;
+
+	static cl::Buffer massBuffer;
+	static cl::Buffer sigmBuffer;
+
+
 	int num_h = 16;
 
 
 	int arraySize = points.size();
-	 
+
 	int numMass = std::min(massM.size(), sigmaM.size());
 
 
@@ -279,7 +285,7 @@ void compute_using_samples(cl::Context context , cl::Program gpuProgram , std::v
 	}
 
 
- 
+
 	int numSamples = numMass;
 	while (numSamples % 8 != 0)
 	{
@@ -292,16 +298,19 @@ void compute_using_samples(cl::Context context , cl::Program gpuProgram , std::v
 	cl::Buffer inputBuffer(queue, begin(points), end(points), true);
 	cl::Buffer outputBuffer(queue, begin(output), end(output), false);
 
-
-	cl::Buffer massBuffer(queue, begin(massM), end(massM), true);
-	cl::Buffer sigmBuffer(queue, begin(sigmaM), end(sigmaM), true);
-
+	 
+	if (has_mem_data == false)
+	{
+		has_mem_data = true;
+		massBuffer = cl::Buffer(queue, begin(massM), end(massM), true);
+		sigmBuffer = cl::Buffer(queue, begin(sigmaM), end(sigmaM), true);
+	}
 	cl::Kernel kernel(gpuProgram, "ModalLikehodList");
 
-	cl::Event event;
+	//cl::Event event;
 
 
-	auto devices = context.getInfo<CL_CONTEXT_DEVICES>();
+	//auto devices = context.getInfo<CL_CONTEXT_DEVICES>();
 	// printf("number of devices %d\n", devices.size());
 
 	queue.finish();
@@ -438,7 +447,7 @@ void compute_using_histogram(cl::Context context, cl::Program gpuProgram, std::v
 	cl::Event event;
 
 
-	auto devices = context.getInfo<CL_CONTEXT_DEVICES>();
+	//auto devices = context.getInfo<CL_CONTEXT_DEVICES>();
 	// printf("number of devices %d\n", devices.size());
 
 
